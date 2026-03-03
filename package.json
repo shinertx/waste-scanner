@@ -1,0 +1,23 @@
+{
+  "name": "@jockeyvc/waste-scanner",
+  "version": "1.0.0",
+  "description": "Free CLI tool that scans your AI agent logs and shows you exactly how much money you're wasting",
+  "main": "src/index.js",
+  "bin": {
+    "waste-scan": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "dev": "node src/cli.js --demo",
+    "build:landing": "echo 'Landing page is static HTML, no build needed'",
+    "test": "node tests/scanner.test.js"
+  },
+  "keywords": ["ai", "agent", "billing", "cost", "optimization", "claude", "openai", "waste", "scanner"],
+  "author": "JockeyVC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shinertx/waste-scanner"
+  },
+  "homepage": "https://scan.jockeyvc.com"
+}
