@@ -1,14 +1,29 @@
 const fs = require('fs');
 const path = require('path');
+const { scanAllSources, discoverSources } = require('./parsers');
 
 const TOKEN_COSTS = {
+    'claude-sonnet-4-6': { input: 3.00 / 1_000_000, output: 15.00 / 1_000_000 },
     'claude-3-5-sonnet': { input: 3.00 / 1_000_000, output: 15.00 / 1_000_000 },
+    'claude-haiku-4-5': { input: 0.80 / 1_000_000, output: 4.00 / 1_000_000 },
     'claude-3-5-haiku': { input: 0.25 / 1_000_000, output: 1.25 / 1_000_000 },
     'gpt-4o': { input: 2.50 / 1_000_000, output: 10.00 / 1_000_000 },
     'gpt-4o-mini': { input: 0.15 / 1_000_000, output: 0.60 / 1_000_000 },
     'default': { input: 3.00 / 1_000_000, output: 15.00 / 1_000_000 },
 };
 
+/**
+ * Auto-discover and scan all known log sources on this machine.
+ * Returns the unified results object compatible with generateReport().
+ */
+async function scanAll() {
+    return scanAllSources();
+}
+
+/**
+ * Scan a specific directory for log files (legacy mode).
+ * Falls back to generic file scanning when user passes a path.
+ */
 async function scanDirectory(dir) {
     const results = {
         totalCalls: 0,
@@ -25,6 +40,7 @@ async function scanDirectory(dir) {
         recommendations: [],
         scanDate: new Date().toISOString(),
         period: 'Scanned files',
+        sources: [],
     };
 
     const logFiles = findLogFiles(dir);
@@ -109,19 +125,16 @@ function analyzeLog(content, results) {
     for (const line of lines) {
         if (!line.trim()) continue;
 
-        // Try to parse as JSON (structured log)
         let entry;
         try {
             entry = JSON.parse(line);
         } catch {
-            // Plain text log — look for patterns
             analyzeTextLine(line, results);
             continue;
         }
 
         results.totalCalls++;
 
-        // Estimate tokens from content length
         const contentLength = JSON.stringify(entry).length;
         const estimatedTokens = Math.ceil(contentLength / 4);
         results.totalTokens += estimatedTokens;
@@ -131,7 +144,6 @@ function analyzeLog(content, results) {
         const callCost = estimatedTokens * costs.input;
         results.totalCost += callCost;
 
-        // Detect duplicate payloads (same content hash)
         const payloadHash = simpleHash(JSON.stringify(entry.messages || entry.prompt || ''));
         if (seenPayloads.has(payloadHash)) {
             results.breakdown.duplicateReads.calls++;
@@ -140,7 +152,6 @@ function analyzeLog(content, results) {
         }
         seenPayloads.set(payloadHash, (seenPayloads.get(payloadHash) || 0) + 1);
 
-        // Detect error loops
         const errorSig = entry.error || entry.status === 'error' ? JSON.stringify(entry.error || '') : '';
         if (errorSig && errorSig === lastErrorSignature) {
             consecutiveErrors++;
@@ -154,9 +165,8 @@ function analyzeLog(content, results) {
             lastErrorSignature = errorSig;
         }
 
-        // Detect overkill model usage for simple tasks
         const isSimpleTask = estimatedTokens < 500;
-        const isFlagshipModel = ['claude-3-5-sonnet', 'gpt-4o', 'gpt-4'].some(m => (model || '').includes(m));
+        const isFlagshipModel = ['claude-3-5-sonnet', 'claude-sonnet-4', 'gpt-4o', 'gpt-4'].some(m => (model || '').includes(m));
         if (isSimpleTask && isFlagshipModel) {
             results.breakdown.overkillModel.calls++;
             results.breakdown.overkillModel.tokens += estimatedTokens;
@@ -167,10 +177,9 @@ function analyzeLog(content, results) {
 }
 
 function analyzeTextLine(line, results) {
-    // Detect common waste patterns in plain text logs
     if (line.includes('retrying') || line.includes('retry') || line.includes('attempt')) {
         results.breakdown.infiniteLoops.calls++;
-        results.breakdown.infiniteLoops.cost += 0.15; // Estimated
+        results.breakdown.infiniteLoops.cost += 0.15;
     }
     if (line.includes('rate limit') || line.includes('429')) {
         results.breakdown.overkillModel.calls++;
@@ -188,4 +197,4 @@ function simpleHash(str) {
     return hash.toString(36);
 }
 
-module.exports = { scanDirectory, findLogFiles };
+module.exports = { scanAll, scanDirectory, findLogFiles, discoverSources };

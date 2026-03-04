@@ -1,0 +1,10 @@
+# Dev / test files
+tests/
+landing/
+.agent/
+.git/
+.gitignore
+
+# Docs / meta
+*.md
+!README.md
